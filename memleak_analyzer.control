@@ -1,0 +1,4 @@
+comment = 'memleak-analyzer' 
+default_version = '1.0'
+module_pathname = '$libdir/memleak-analyzer'
+relocatable = true
