@@ -1,4 +1,4 @@
-comment = 'memleak-analyzer' 
+comment = 'Memory leak analyzer for Memory Contexts and DSM' 
 default_version = '1.0'
-module_pathname = '$libdir/memleak-analyzer'
+module_pathname = '$libdir/memleak_analyzer'
 relocatable = true
