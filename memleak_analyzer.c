@@ -4,6 +4,7 @@
 
 #include "executor/spi.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 #include "utils/tuplestore.h"
 
 PG_MODULE_MAGIC;
@@ -14,6 +15,7 @@ PG_MODULE_MAGIC;
 #define TOP_CONTEXT_PARENT_LABEL "-"
 
 
+/* Representation of a single MemoryContext node */
 typedef struct ContextNode {
     char   name[CONTEXT_NAME_MAX_LEN];
     char   parent_name[CONTEXT_NAME_MAX_LEN];
@@ -21,14 +23,18 @@ typedef struct ContextNode {
     uint64 used_bytes;
 } ContextNode;
 
+/* Fixed-size snapshot of a MemoryContext tree */
 typedef struct MemorySnapshot {
     ContextNode nodes[SNAPSHOT_MAX_NODES];
     int         node_count;
 } MemorySnapshot;
 
 
+/* Execute profiled query inside rollbackable subtransaction */
+static bool backend_rollback_mode = true; 
+
 static bool backend_profiling_active = false;
-/* Snapshots for capturing the state of memory before and after a client request is executed */
+/* Snapshots for capturing the state of memory before and after a client query is executed */
 static MemorySnapshot backend_snapshot_before;
 static MemorySnapshot backend_snapshot_after;
 
@@ -51,6 +57,13 @@ static void compute_contexts_diff(ReturnSetInfo *rsinfo);
 Datum analyze_query(PG_FUNCTION_ARGS);
 
 
+/*
+ * analyzer_ExecutorStart
+ *
+ * ExecutorStart hook used to capture the initial memory state
+ * before query execution begins. When profiling is active,
+ * a snapshot of the current MemoryContext tree is captured.
+ */
 static void
 analyzer_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
@@ -58,6 +71,7 @@ analyzer_ExecutorStart(QueryDesc *queryDesc, int eflags)
 
     if (backend_profiling_active)
     {
+        /* Capture a snapshot before the query execution */
         traverse_memory_contexts(TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, 0, &backend_snapshot_before);
     }
 
@@ -67,6 +81,13 @@ analyzer_ExecutorStart(QueryDesc *queryDesc, int eflags)
         standard_ExecutorStart(queryDesc, eflags);
 }
 
+/*
+ * analyzer_ExecutorEnd
+ *
+ * ExecutorEnd hook used to capture the memory state after query
+ * execution is finished. This snapshot is later compared
+ * against the initial snapshot to identify memory growth patterns.
+ */
 static void
 analyzer_ExecutorEnd(QueryDesc *queryDesc)
 {
@@ -83,6 +104,14 @@ analyzer_ExecutorEnd(QueryDesc *queryDesc)
         standard_ExecutorEnd(queryDesc);
 }
 
+/*
+ * reset_snapshot
+ *
+ * Resets a memory snapshot by clearing all of its fields.
+ *
+ * Parameters:
+ * snapshot - pointer to the snapshot structure to reset.
+ */
 static void
 reset_snapshot(MemorySnapshot *snapshot)
 {
@@ -102,24 +131,39 @@ reset_snapshot(MemorySnapshot *snapshot)
 
 PG_FUNCTION_INFO_V1(analyze_query);
 
+/*
+ * analyze_query
+ *
+ * Entry point for SQL-level memory profiling. Executes the
+ * target query while profiling hooks are enabled, captures
+ * memory snapshots before and after execution, and returns
+ * the memory differences as a set-returning table.
+ *
+ * Returns:
+ * A materialized result set containing memory statistics.
+ */
 Datum
 analyze_query(PG_FUNCTION_ARGS)
 {
     char          *query  = text_to_cstring(PG_GETARG_TEXT_PP(0)); /* Extract target query */
     ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
 
+    /* Initialize materialized SRF infrastructure */
     InitMaterializedSRF(fcinfo, 0);
-    BeginInternalSubTransaction(NULL);
+    /* Create an isolated transactional scope for query execution */
+    BeginInternalSubTransaction(NULL); 
 
     PG_TRY();
     {
-        backend_profiling_active = true; /* Enable profiling flag */
+        /* Enable profiling flag */
+        backend_profiling_active = true;
         /* Reset memory snapshots before a query execution */
         reset_snapshot(&backend_snapshot_before);
         reset_snapshot(&backend_snapshot_after);
 
         SPI_connect();
         
+        /* Execute target query */
         if (SPI_execute(query, false, 0) < 0)
         {
             /* Query execution failure */
@@ -132,23 +176,50 @@ analyze_query(PG_FUNCTION_ARGS)
         
         SPI_finish();
 
+        /* Compute memory differences and materialize results */
+        compute_contexts_diff(rsinfo);
+        /* Disable profiling */
         backend_profiling_active = false;
-        RollbackAndReleaseCurrentSubTransaction();
+
+        /*
+         * Finalize subtransaction:
+         * Rollback changes if rollback mode is enabled,
+         * otherwise commit the subtransaction.
+         */
+        if (backend_rollback_mode)
+            RollbackAndReleaseCurrentSubTransaction();
+        else
+            ReleaseCurrentSubTransaction();
     }
     PG_CATCH();
     {
+        /* Ensure SPI state is cleaned up on failure */
         SPI_finish();
+        /* Disable profiling */
         backend_profiling_active = false;
+        /* Rollback subtransaction on failure */
         RollbackAndReleaseCurrentSubTransaction();
+
         PG_RE_THROW();
     }
     PG_END_TRY();
 
-    compute_contexts_diff(rsinfo);
-
     PG_RETURN_NULL();
 }
 
+/*
+ * traverse_memory_contexts
+ *
+ * Recursively traverses the MemoryContext tree serializes
+ * context data into a snapshot representation for subsequent
+ * comparison.
+ *
+ * Parameters:
+ * context   - current MemoryContext being traversed.
+ * snapshot  - target snapshot receiving collected nodes.
+ * level     - current depth level in the tree.
+ * parent    - name of the parent context.
+ */
 static void
 traverse_memory_contexts(MemoryContext context,
                          const char *parent_name,
@@ -180,15 +251,26 @@ traverse_memory_contexts(MemoryContext context,
     }
 }
 
+/*
+ * compute_contexts_diff
+ *
+ * Compares memory snapshots to identify memory deltas.
+ * Contexts with increased memory usage are appended into the SQL result set.
+ *
+ * Parameters:
+ * rsinfo - ReturnSetInfo structure used to materialize results into a tuplestore.
+ */
 static void
 compute_contexts_diff(ReturnSetInfo *rsinfo)
 {
+    /* Compare post-execution snapshot against baseline */
     for (int i = 0; i < backend_snapshot_after.node_count; i++)
     {
         ContextNode *node_after = &backend_snapshot_after.nodes[i];
         uint64 used_before = 0;
         int64 delta_bytes = 0;
 
+        /* Find matching context in the baseline snapshot */
         for (int j = 0; j < backend_snapshot_before.node_count; j++)
         {
             ContextNode *node_before = &backend_snapshot_before.nodes[j];
@@ -200,13 +282,16 @@ compute_contexts_diff(ReturnSetInfo *rsinfo)
             }
         }
 
+        /* Calculate memory growth for the context */
         delta_bytes = (int64)node_after->used_bytes - (int64)used_before;
 
+        /* Report only positive deltas */
         if (delta_bytes > 0)
         {
             Datum values[7];
             bool  nulls[7] = { false };
 
+            /* Temporarily */
             bool leak_suspected = (node_after->level <= 1) || 
                                   (strstr(node_after->name, "Cache") != NULL);
 
@@ -218,6 +303,7 @@ compute_contexts_diff(ReturnSetInfo *rsinfo)
             values[5] = Int64GetDatum(delta_bytes);
             values[6] = BoolGetDatum(leak_suspected);
 
+            /* Append result row to an output */
             tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
         }
     }
@@ -226,6 +312,21 @@ compute_contexts_diff(ReturnSetInfo *rsinfo)
 void
 _PG_init(void)
 {
+    /*
+     * Register GUC variable that controls
+     * transactional behavior during query profiling
+     */
+    DefineCustomBoolVariable(
+        "memleak_analyzer.rollback_mode",
+        "Rollback analyzed query after execution",
+        NULL,
+        &backend_rollback_mode,
+        true,
+        PGC_USERSET,
+        0,
+        NULL, NULL, NULL
+    );
+
     /* Install new and save previous executor hooks */
     prev_ExecutorStart = ExecutorStart_hook;
     ExecutorStart_hook = analyzer_ExecutorStart;
