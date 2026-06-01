@@ -13,7 +13,7 @@ PG_MODULE_MAGIC;
 #define CONTEXT_NAME_MAX_LEN     64
 #define SNAPSHOT_MAX_NODES       512
 #define TOP_CONTEXT_PARENT_LABEL "-"
-
+#define WARMUP_RUNS              2
 
 /* Representation of a single MemoryContext node */
 typedef struct ContextNode {
@@ -51,7 +51,7 @@ static void analyzer_ExecutorEnd(QueryDesc *queryDesc);
 static void reset_snapshot(MemorySnapshot *snapshot);
 static void traverse_memory_contexts(MemoryContext context, const char *parent_name, int level, MemorySnapshot* snapshot);
 static void compute_contexts_diff(ReturnSetInfo *rsinfo);
-
+static void execute_query_times(const char *query, int count);
 
 /* SQL binds */
 Datum analyze_query(PG_FUNCTION_ARGS);
@@ -150,19 +150,24 @@ analyze_query(PG_FUNCTION_ARGS)
 
     /* Initialize materialized SRF infrastructure */
     InitMaterializedSRF(fcinfo, 0);
+
+    /* Reset memory snapshots before a query execution */
+    reset_snapshot(&backend_snapshot_before);
+    reset_snapshot(&backend_snapshot_after); 
+
     /* Create an isolated transactional scope for query execution */
     BeginInternalSubTransaction(NULL); 
 
     PG_TRY();
     {
-        /* Enable profiling flag */
-        backend_profiling_active = true;
-        /* Reset memory snapshots before a query execution */
-        reset_snapshot(&backend_snapshot_before);
-        reset_snapshot(&backend_snapshot_after);
-
         SPI_connect();
         
+        /* Run target query WARMUP_RUNS times to populate internal caches */
+        execute_query_times(query, WARMUP_RUNS);
+
+        /* Enable profiling flag */
+        backend_profiling_active = true;
+
         /* Execute target query */
         if (SPI_execute(query, false, 0) < 0)
         {
@@ -176,8 +181,6 @@ analyze_query(PG_FUNCTION_ARGS)
         
         SPI_finish();
 
-        /* Compute memory differences and materialize results */
-        compute_contexts_diff(rsinfo);
         /* Disable profiling */
         backend_profiling_active = false;
 
@@ -203,6 +206,9 @@ analyze_query(PG_FUNCTION_ARGS)
         PG_RE_THROW();
     }
     PG_END_TRY();
+
+    /* Compute memory differences and materialize results */
+    compute_contexts_diff(rsinfo);
 
     PG_RETURN_NULL();
 }
@@ -251,6 +257,34 @@ traverse_memory_contexts(MemoryContext context,
     }
 }
 
+static void
+execute_query_times(const char *query, int count)
+{
+    for (int i = 0; i < count; ++i)
+    {
+        BeginInternalSubTransaction(NULL);
+        PG_TRY();
+        {
+            if (SPI_execute(query, false, 0) < 0)
+            {
+                ereport(
+                    ERROR,
+                    errcode(ERRCODE_SYNTAX_ERROR),
+                    errmsg("Failed to execute query: %s", query)
+                );
+            }
+        }
+        PG_CATCH();
+        {
+            RollbackAndReleaseCurrentSubTransaction();
+            PG_RE_THROW();
+        }
+        PG_END_TRY();
+        
+        RollbackAndReleaseCurrentSubTransaction();
+    }
+}
+
 /*
  * compute_contexts_diff
  *
@@ -286,7 +320,7 @@ compute_contexts_diff(ReturnSetInfo *rsinfo)
         delta_bytes = (int64)node_after->used_bytes - (int64)used_before;
 
         /* Report only positive deltas */
-        if (delta_bytes > 0)
+        if (true)
         {
             Datum values[7];
             bool  nulls[7] = { false };
