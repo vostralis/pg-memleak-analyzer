@@ -123,7 +123,7 @@ compute_contexts_diff(ReturnSetInfo *rsinfo,
             values[3] = UInt64GetDatum(used_before);
             values[4] = UInt64GetDatum(node_after->used_bytes);
             values[5] = Int64GetDatum(delta_bytes);
-            values[6] = BoolGetDatum(leak_suspected);
+            // values[6] = BoolGetDatum(leak_suspected);
 
             /* Append result row to an output */
             tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);

@@ -26,3 +26,18 @@ RETURNS TABLE (
 )
 AS 'MODULE_PATHNAME', 'get_bgw_memory_snapshot'
 LANGUAGE C STRICT VOLATILE;
+
+CREATE OR REPLACE FUNCTION memleak_analyzer.analyze_bgw(
+    target_pid           INTEGER, 
+    observation_interval INTEGER
+)
+RETURNS TABLE (
+    context_name     TEXT,
+    parent_name      TEXT,
+    level            INT,
+    allocated_before BIGINT,
+    allocated_after  BIGINT,
+    delta_bytes      BIGINT
+)
+AS 'MODULE_PATHNAME', 'analyze_bgw'
+LANGUAGE C STRICT VOLATILE;

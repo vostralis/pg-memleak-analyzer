@@ -4,6 +4,7 @@
 #include "analyzer_core.h"
 
 #include "storage/ipc.h"
+#include "storage/latch.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "storage/spin.h"
@@ -27,5 +28,6 @@ extern void analyzer_shmem_request(void);
 extern void bgw_snapshot_signal_handler(void);
 
 Datum get_bgw_memory_snapshot(PG_FUNCTION_ARGS);
+Datum analyze_bgw(PG_FUNCTION_ARGS);
 
 #endif // ANALYZER_BGW_H
