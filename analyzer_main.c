@@ -48,6 +48,8 @@ _PG_init(void)
         0,
         NULL, NULL, NULL
     );
+
+    bgw_snapshot_signal_reason = RegisterCustomProcSignalHandler(bgw_snapshot_signal_handler);
 }
 
 void

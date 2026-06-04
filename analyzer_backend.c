@@ -2,8 +2,8 @@
 
 static bool backend_profiling_active = false;
 /* Snapshots for capturing the state of memory before and after a client query is executed */
-static MemorySnapshot backend_snapshot_before;
-static MemorySnapshot backend_snapshot_after;
+static MemorySnapshot backend_snapshot_before = { .node_count = 0 };
+static MemorySnapshot backend_snapshot_after = { .node_count = 0 };
 
 bool backend_rollback_mode = true;
 

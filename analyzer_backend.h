@@ -4,8 +4,7 @@
 #include "analyzer_core.h"
 #include "executor/spi.h"
 
-#define TOP_CONTEXT_PARENT_LABEL "-"
-#define WARMUP_RUNS               2
+#define WARMUP_RUNS 2
 
 /* Execute profiled query inside rollbackable subtransaction */
 extern bool backend_rollback_mode; 

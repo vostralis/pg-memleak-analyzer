@@ -9,8 +9,9 @@
 #include "utils/builtins.h"
 #include "utils/tuplestore.h"
 
-#define CONTEXT_NAME_MAX_LEN 64
-#define SNAPSHOT_MAX_NODES   512
+#define CONTEXT_NAME_MAX_LEN     64
+#define SNAPSHOT_MAX_NODES       512
+#define TOP_CONTEXT_PARENT_LABEL "-"
 
 /* Representation of a single MemoryContext node */
 typedef struct ContextNode {
