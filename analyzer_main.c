@@ -49,6 +49,19 @@ _PG_init(void)
         NULL, NULL, NULL
     );
 
+    DefineCustomIntVariable(
+        "memleak_analyzer.max_context_level_displayed",
+        "Maximum depth level of memory contexts to display (-1 for all)",
+        NULL,
+        &max_context_level_displayed,
+        -1,
+        -1,
+        100,
+        PGC_USERSET,
+        0,
+        NULL, NULL, NULL
+    );
+
     bgw_snapshot_signal_reason = RegisterCustomProcSignalHandler(bgw_snapshot_signal_handler);
 }
 

@@ -1,5 +1,8 @@
 #include "analyzer_core.h"
 
+int max_context_level_displayed = -1;
+
+
 /*
  * traverse_memory_contexts
  *
@@ -110,6 +113,9 @@ compute_contexts_diff(ReturnSetInfo *rsinfo,
         /* Report only positive deltas */
         if (true)
         {
+            if (max_context_level_displayed >= 0 && node_after->level > max_context_level_displayed)
+                continue;
+                
             Datum values[7];
             bool  nulls[7] = { false };
 

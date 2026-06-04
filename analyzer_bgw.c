@@ -78,6 +78,10 @@ Datum get_bgw_memory_snapshot(PG_FUNCTION_ARGS)
     for (int i = 0; i < snapshot->node_count; ++i)
     {
         ContextNode *node = &snapshot->nodes[i];
+
+        if (max_context_level_displayed >= 0 && node->level > max_context_level_displayed)
+            continue;
+
         Datum values[4];
         bool nulls[4] = { false };
 

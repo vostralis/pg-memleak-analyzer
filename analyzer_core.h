@@ -27,6 +27,8 @@ typedef struct MemorySnapshot {
     int         node_count;
 } MemorySnapshot;
 
+extern int max_context_level_displayed;
+
 /* Forward declarations */
 extern void traverse_memory_contexts(MemoryContext context, const char *parent_name, int level, MemorySnapshot* snapshot);
 extern void reset_snapshot(MemorySnapshot *snapshot);
