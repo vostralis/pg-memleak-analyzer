@@ -40,6 +40,7 @@ traverse_memory_contexts(MemoryContext context,
     strlcpy(node->parent_name, parent_name, CONTEXT_NAME_MAX_LEN - 1);
     node->level = level;
     node->used_bytes = (uint64)(stats.totalspace - stats.freespace);
+    node->address = (uintptr_t)context;
 
     for (child = context->firstchild; child != NULL; child = child->nextchild)
     {
@@ -100,7 +101,8 @@ compute_contexts_diff(ReturnSetInfo *rsinfo,
         {
             ContextNode *node_before = &snapshot_before->nodes[j];
             if (strncmp(node_after->name, node_before->name, CONTEXT_NAME_MAX_LEN) == 0 &&
-                strncmp(node_after->parent_name, node_before->parent_name, CONTEXT_NAME_MAX_LEN) == 0)
+                strncmp(node_after->parent_name, node_before->parent_name, CONTEXT_NAME_MAX_LEN) == 0 &&
+                node_before->address == node_after->address)
             {
                 used_before = node_before->used_bytes;
                 break;

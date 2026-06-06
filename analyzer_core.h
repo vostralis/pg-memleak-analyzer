@@ -15,10 +15,11 @@
 
 /* Representation of a single MemoryContext node */
 typedef struct ContextNode {
-    char   name[CONTEXT_NAME_MAX_LEN];
-    char   parent_name[CONTEXT_NAME_MAX_LEN];
-    int    level;
-    uint64 used_bytes;
+    char      name[CONTEXT_NAME_MAX_LEN];
+    char      parent_name[CONTEXT_NAME_MAX_LEN];
+    int       level;
+    uint64    used_bytes;
+    uintptr_t address;
 } ContextNode;
 
 /* Fixed-size snapshot of a MemoryContext tree */
