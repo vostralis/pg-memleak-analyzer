@@ -21,7 +21,7 @@ _PG_init(void)
         );
     }
 
-    /* Install new and save previous executor hooks */
+    /* Install new and save previous hooks */
     prev_shmem_request_hook = shmem_request_hook;
     shmem_request_hook = analyzer_shmem_request;
 
@@ -42,7 +42,7 @@ _PG_init(void)
         "memleak_analyzer.rollback_mode",
         "Rollback analyzed query after execution",
         NULL,
-        &backend_rollback_mode,
+        &analyzer_rollback_mode,
         true,
         PGC_USERSET,
         0,
@@ -53,10 +53,21 @@ _PG_init(void)
         "memleak_analyzer.max_context_level_displayed",
         "Maximum depth level of memory contexts to display (-1 for all)",
         NULL,
-        &max_context_level_displayed,
+        &analyzer_max_context_level,
         -1,
         -1,
         100,
+        PGC_USERSET,
+        0,
+        NULL, NULL, NULL
+    );
+
+    DefineCustomBoolVariable(
+        "memleak_analyzer.merge_contexts",
+        "Merge memory contexts with identical names and parents in the output",
+        NULL,
+        &analyzer_merge_contexts,
+        false,
         PGC_USERSET,
         0,
         NULL, NULL, NULL

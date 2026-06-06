@@ -44,15 +44,23 @@ bgw_snapshot_signal_handler(void)
 {
     MemorySnapshot local_snapshot = { .node_count = 0 };
     bool is_target = false;
+    int local_max_context_level = -1;
+    bool local_merge_contexts = false;
 
     SpinLockAcquire(&ipc_state->mutex);
     is_target = (ipc_state->target_pid == MyProcPid);
+    local_max_context_level = ipc_state->max_context_level;
+    local_merge_contexts = ipc_state->merge_contexts;
     SpinLockRelease(&ipc_state->mutex);
     
     if (is_target)
     {
         reset_snapshot(&local_snapshot);
-        traverse_memory_contexts(TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, 0, &local_snapshot);
+
+        traverse_memory_contexts(
+            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, 0, 
+            local_max_context_level, local_merge_contexts, &local_snapshot
+        );
         
         SpinLockAcquire(&ipc_state->mutex);
         memcpy(&ipc_state->snapshot, &local_snapshot, sizeof(MemorySnapshot));
@@ -79,9 +87,6 @@ Datum get_bgw_memory_snapshot(PG_FUNCTION_ARGS)
     {
         ContextNode *node = &snapshot->nodes[i];
 
-        if (max_context_level_displayed >= 0 && node->level > max_context_level_displayed)
-            continue;
-
         Datum values[4];
         bool nulls[4] = { false };
 
@@ -102,8 +107,10 @@ fetch_bgw_snapshot(pid_t target_pid, MemorySnapshot *local_snapshot)
     bool ready = false;
 
     SpinLockAcquire(&ipc_state->mutex);
-    ipc_state->target_pid = target_pid;
-    ipc_state->dump_ready = false;
+    ipc_state->target_pid        = target_pid;
+    ipc_state->dump_ready        = false;
+    ipc_state->max_context_level = analyzer_max_context_level;
+    ipc_state->merge_contexts    = analyzer_merge_contexts;
     SpinLockRelease(&ipc_state->mutex);
 
     if (SendProcSignal(target_pid, bgw_snapshot_signal_reason, INVALID_PROC_NUMBER) < 0)

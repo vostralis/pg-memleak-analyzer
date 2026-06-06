@@ -5,7 +5,7 @@ static bool backend_profiling_active = false;
 static MemorySnapshot backend_snapshot_before = { .node_count = 0 };
 static MemorySnapshot backend_snapshot_after = { .node_count = 0 };
 
-bool backend_rollback_mode = true;
+bool analyzer_rollback_mode = true;
 
 ExecutorStart_hook_type prev_ExecutorStart = NULL;
 ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
@@ -72,7 +72,7 @@ analyze_query(PG_FUNCTION_ARGS)
          * Rollback changes if rollback mode is enabled,
          * otherwise commit the subtransaction.
          */
-        if (backend_rollback_mode)
+        if (analyzer_rollback_mode)
             RollbackAndReleaseCurrentSubTransaction();
         else
             ReleaseCurrentSubTransaction();
@@ -111,7 +111,10 @@ analyzer_ExecutorStart(QueryDesc *queryDesc, int eflags)
     if (backend_profiling_active)
     {
         /* Capture a snapshot before the query execution */
-        traverse_memory_contexts(TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, 0, &backend_snapshot_before);
+        traverse_memory_contexts(
+            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, 0,
+            analyzer_max_context_level, analyzer_merge_contexts, &backend_snapshot_before
+        );
     }
 
     if (prev_ExecutorStart)
@@ -134,7 +137,10 @@ analyzer_ExecutorEnd(QueryDesc *queryDesc)
 
     if (backend_profiling_active)
     {
-        traverse_memory_contexts(TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, 0, &backend_snapshot_after);
+        traverse_memory_contexts(
+            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, 0, 
+            analyzer_max_context_level, analyzer_merge_contexts, &backend_snapshot_after
+        );
     }
 
     if (prev_ExecutorEnd)

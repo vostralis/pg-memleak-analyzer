@@ -11,8 +11,7 @@ RETURNS TABLE (
     level            INT,
     allocated_before BIGINT,
     allocated_after  BIGINT,
-    delta_bytes      BIGINT,
-    leak_suspected   BOOLEAN
+    delta_bytes      BIGINT
 )
 AS 'MODULE_PATHNAME', 'analyze_query'
 LANGUAGE C STRICT VOLATILE;

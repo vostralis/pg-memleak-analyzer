@@ -26,13 +26,20 @@ typedef struct ContextNode {
 typedef struct MemorySnapshot {
     ContextNode nodes[SNAPSHOT_MAX_NODES];
     int         node_count;
+    bool        limit_warning_emitted;
 } MemorySnapshot;
 
-extern int max_context_level_displayed;
+extern int  analyzer_max_context_level;
+extern bool analyzer_merge_contexts;
 
 /* Forward declarations */
-extern void traverse_memory_contexts(MemoryContext context, const char *parent_name, int level, MemorySnapshot* snapshot);
+extern void traverse_memory_contexts(MemoryContext context, 
+                                     const char *parent_name, int level, 
+                                     int max_level, bool merge_contexts,
+                                     MemorySnapshot* snapshot);
 extern void reset_snapshot(MemorySnapshot *snapshot);
-extern void compute_contexts_diff(ReturnSetInfo *rsinfo, MemorySnapshot *snapshot_before, MemorySnapshot *snapshot_after);
+extern void compute_contexts_diff(ReturnSetInfo *rsinfo, 
+                                  MemorySnapshot *snapshot_before,
+                                  MemorySnapshot *snapshot_after);
 
 #endif // ANALYZER_CORE_H

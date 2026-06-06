@@ -14,6 +14,8 @@ typedef struct AnalyzerIPC {
     slock_t mutex;
     pid_t target_pid;
     bool dump_ready;
+    int max_context_level;
+    bool merge_contexts;
     MemorySnapshot snapshot;
 } AnalyzerIPC;
 

@@ -7,7 +7,7 @@
 #define WARMUP_RUNS 2
 
 /* Execute profiled query inside rollbackable subtransaction */
-extern bool backend_rollback_mode; 
+extern bool analyzer_rollback_mode; 
 
 /* Saved hook values in case of unload */
 extern ExecutorStart_hook_type prev_ExecutorStart;
