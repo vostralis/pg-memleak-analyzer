@@ -6,19 +6,19 @@
 
 #define WARMUP_RUNS 2
 
-/* Execute profiled query inside rollbackable subtransaction */
-extern bool analyzer_rollback_mode; 
+/* Controls whether executed queries are wrapped in an internal subtransaction and rolled back after execution */
+extern bool analyzer_rollback_mode;
+
+/* Enables warmup phase before actual profiling execution for population of internal caches */
 extern bool analyzer_enable_warmup;
 
-/* Saved hook values in case of unload */
+/* Previous Executor memory hooks */
 extern ExecutorStart_hook_type prev_ExecutorStart;
 extern ExecutorEnd_hook_type   prev_ExecutorEnd;
 
-/* Forward declarations */
 extern void analyzer_ExecutorStart(QueryDesc *queryDesc, int eflags);
 extern void analyzer_ExecutorEnd(QueryDesc *queryDesc);
 
-/* SQL bind */
 Datum analyze_query(PG_FUNCTION_ARGS);
 
 #endif // ANALYZER_BACKEND_H

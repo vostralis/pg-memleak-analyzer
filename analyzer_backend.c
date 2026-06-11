@@ -18,13 +18,8 @@ PG_FUNCTION_INFO_V1(analyze_query);
 /*
  * analyze_query
  *
- * Entry point for SQL-level memory profiling. Executes the
- * target query while profiling hooks are enabled, captures
- * memory snapshots before and after execution, and returns
- * the memory differences as a set-returning table.
- *
- * Returns:
- * A materialized result set containing memory statistics.
+ * SRF function that executes the target query while profiling hooks are enabled, captures
+ * memory snapshots before and after execution and returns the memory differences.
  */
 Datum
 analyze_query(PG_FUNCTION_ARGS)
@@ -114,7 +109,7 @@ analyzer_ExecutorStart(QueryDesc *queryDesc, int eflags)
     {
         /* Capture a snapshot before the query execution */
         traverse_memory_contexts(
-            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, 0,
+            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, TOP_CONTEXT_LEVEL,
             analyzer_max_context_level, analyzer_merge_contexts, &backend_snapshot_before
         );
     }
@@ -139,8 +134,9 @@ analyzer_ExecutorEnd(QueryDesc *queryDesc)
 
     if (backend_profiling_active)
     {
+        /* Capture a snapshot after the query execution */
         traverse_memory_contexts(
-            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, 0, 
+            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, TOP_CONTEXT_LEVEL, 
             analyzer_max_context_level, analyzer_merge_contexts, &backend_snapshot_after
         );
     }
@@ -151,6 +147,11 @@ analyzer_ExecutorEnd(QueryDesc *queryDesc)
         standard_ExecutorEnd(queryDesc);
 }
 
+/*
+ * execute_query_times
+ *
+ * Executes a SQL query multiple times inside isolated subtransactions.
+ */
 static void
 execute_query_times(const char *query, int count)
 {

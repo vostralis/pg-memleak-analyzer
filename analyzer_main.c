@@ -12,6 +12,7 @@ void _PG_fini(void);
 void
 _PG_init(void)
 {
+    /* Ensure extension is loaded via shared_preload_libraries */
     if (!process_shared_preload_libraries_in_progress)
     {
         ereport(
@@ -34,10 +35,7 @@ _PG_init(void)
     prev_ExecutorEnd = ExecutorEnd_hook;
     ExecutorEnd_hook = analyzer_ExecutorEnd;
 
-    /*
-     * Register GUC variable that controls
-     * transactional behavior during query profiling
-     */
+    /* Register GUC variables */
     DefineCustomBoolVariable(
         "memleak_analyzer.rollback_mode",
         "Rollback analyzed query after execution",
@@ -95,6 +93,7 @@ _PG_init(void)
         NULL, NULL, NULL
     );
 
+    /* Register custom ProcSignal handler for background worker memory snapshot requests */
     bgw_snapshot_signal_reason = RegisterCustomProcSignalHandler(bgw_snapshot_signal_handler);
 }
 

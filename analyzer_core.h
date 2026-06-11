@@ -12,28 +12,33 @@
 #define CONTEXT_NAME_MAX_LEN     64
 #define SNAPSHOT_MAX_NODES       512
 #define TOP_CONTEXT_PARENT_LABEL "-"
+#define TOP_CONTEXT_LEVEL        0
 
 /* Representation of a single MemoryContext node */
-typedef struct ContextNode {
-    char      name[CONTEXT_NAME_MAX_LEN];
-    char      parent_name[CONTEXT_NAME_MAX_LEN];
-    int       level;
-    uint64    used_bytes;
-    uintptr_t address;
+typedef struct ContextNode
+{
+    char      name[CONTEXT_NAME_MAX_LEN];        /* Memory context name */
+    char      parent_name[CONTEXT_NAME_MAX_LEN]; /* Parent context name */
+    int       level;                             /* Context depth in the tree */
+    uint64    used_bytes;                        /* Memory currently used */
+    uintptr_t address;                           /* Memory context address used for identity tracking */
 } ContextNode;
 
 /* Fixed-size snapshot of a MemoryContext tree */
-typedef struct MemorySnapshot {
-    ContextNode nodes[SNAPSHOT_MAX_NODES];
-    int         node_count;
-    bool        limit_warning_emitted;
+typedef struct MemorySnapshot
+{
+    ContextNode nodes[SNAPSHOT_MAX_NODES]; /* Collected context nodes */
+    int         node_count;                /* Number of collected nodes */
+    bool        limit_warning_emitted;     /* Flag to prevent duplicate truncation warning */
 } MemorySnapshot;
 
+/* Maximum memory context tree depth included in snapshots */
 extern int  analyzer_max_context_level;
+/* Merge contexts with identical name and parent into a single node */
 extern bool analyzer_merge_contexts;
+/* Show only positive memory deltas in the output */
 extern bool analyzer_show_positive_deltas;
 
-/* Forward declarations */
 extern void traverse_memory_contexts(MemoryContext context, 
                                      const char *parent_name, int level, 
                                      int max_level, bool merge_contexts,

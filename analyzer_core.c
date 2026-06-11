@@ -11,15 +11,20 @@ static inline void init_context_node(ContextNode *node,
 /*
  * traverse_memory_contexts
  *
- * Recursively traverses the MemoryContext tree serializes
- * context data into a snapshot representation for subsequent
- * comparison.
+ * Recursively traverses the MemoryContext tree and serializes
+ * context metadata into a snapshot representation for subsequent
+ * comparison and leak analysis.
+ *
+ * Traversal may be limited by maximum tree depth and optionally
+ * merge contexts sharing the same name and parent.
  *
  * Parameters:
- * context   - current MemoryContext being traversed.
- * snapshot  - target snapshot receiving collected nodes.
- * level     - current depth level in the tree.
- * parent    - name of the parent context.
+ * context        - current MemoryContext being traversed.
+ * parent_name    - name of the parent context.
+ * level          - current tree depth level.
+ * max_level      - maximum traversal depth limit.
+ * merge_contexts - whether matching contexts should be merged.
+ * snapshot       - target snapshot.
  */
 extern void
 traverse_memory_contexts(MemoryContext context,
@@ -31,17 +36,20 @@ traverse_memory_contexts(MemoryContext context,
 {
     MemoryContext         child;
     MemoryContextCounters stats;
+    uint64                used_bytes;
+
     bool context_limit_reached = (snapshot->node_count >= SNAPSHOT_MAX_NODES);
-    uint64 used_bytes;
     
     /* Base case */
     if (context == NULL)
         return;
 
+    /* Check that the current depth does not exceed the limit */
     if (max_level >= 0 && level > max_level)
         return;
 
-    /* If contexts shouldn't be merged and the context limis was reached, 
+    /* 
+     * If contexts shouldn't be merged and the context limis was reached, 
      * then we can't keep traversing the context tree
      */
     if (!merge_contexts && context_limit_reached)
@@ -61,6 +69,7 @@ traverse_memory_contexts(MemoryContext context,
         return;
     }
 
+    /* Call stats method to get information about bytes usage */
     MemSet(&stats, 0, sizeof(stats));
     context->methods->stats(context, NULL, NULL, &stats, false);
     used_bytes = (uint64)(stats.totalspace - stats.freespace);
@@ -69,6 +78,7 @@ traverse_memory_contexts(MemoryContext context,
     {
         bool is_merged = false;
 
+        /* Search for context to merge */
         for (int i = 0; i < snapshot->node_count; ++i)
         {
             ContextNode *existing_node = &snapshot->nodes[i];
@@ -89,18 +99,20 @@ traverse_memory_contexts(MemoryContext context,
         {
             init_context_node(
                 &snapshot->nodes[snapshot->node_count++], 
-                context->name, parent_name, level, used_bytes, (uintptr_t)NULL
+                context->name, parent_name, level, used_bytes, (uintptr_t)NULL /* Address is irrelevant */
             );
         }
     }
     else
     {   
+        /* Otherwise just push back a new one */
         init_context_node(
             &snapshot->nodes[snapshot->node_count++], 
             context->name, parent_name, level, used_bytes, (uintptr_t)context
         );
     }
 
+    /* Recursively traverse through all the current context's childs */
     for (child = context->firstchild; child != NULL; child = child->nextchild)
     {
         traverse_memory_contexts(child, context->name, level + 1, max_level, merge_contexts, snapshot);
@@ -127,6 +139,7 @@ reset_snapshot(MemorySnapshot *snapshot)
         memset(node->parent_name, 0, CONTEXT_NAME_MAX_LEN);
         node->level = 0;
         node->used_bytes = 0;
+        node->address = (uintptr_t)NULL;
     }
 
     snapshot->node_count = 0;
@@ -172,6 +185,7 @@ compute_contexts_diff(ReturnSetInfo *rsinfo,
         /* Calculate memory growth for the context */
         delta_bytes = (int64)node_after->used_bytes - (int64)used_before;
 
+        /* Don't append current row to the output if positive deltas flag is set and delta is 0 */
         if (analyzer_show_positive_deltas && delta_bytes == 0)
             continue;
         
@@ -190,10 +204,27 @@ compute_contexts_diff(ReturnSetInfo *rsinfo,
     }
 }
 
+/*
+ * init_context_node
+ *
+ * Initializes a ContextNode structure with memory context data
+ * collected during snapshot traversal.
+ *
+ * Parameters:
+ * node        - target node to initialize.
+ * name        - memory context name.
+ * parent_name - parent context name.
+ * level       - depth level in the context tree.
+ * used_bytes  - allocated bytes.
+ * address     - memory context address.
+ */
 static inline void
 init_context_node(ContextNode *node, 
-                  const char *name, const char *parent_name, 
-                  int level, uint64 used_bytes, uintptr_t address)
+                  const char *name,
+                  const char *parent_name, 
+                  int level,
+                  uint64 used_bytes,
+                  uintptr_t address)
 {
     strlcpy(node->name, name, CONTEXT_NAME_MAX_LEN);
     strlcpy(node->parent_name, parent_name, CONTEXT_NAME_MAX_LEN);
