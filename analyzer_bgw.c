@@ -125,7 +125,14 @@ fetch_bgw_snapshot(pid_t target_pid, MemorySnapshot *local_snapshot)
     while (!ready)
     {
         CHECK_FOR_INTERRUPTS();
-        pg_usleep(10000);
+
+        WaitLatch(
+            MyLatch,
+            WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
+            1000L,
+            PG_WAIT_EXTENSION
+        );
+        ResetLatch(MyLatch);
 
         SpinLockAcquire(&ipc_state->mutex);
 

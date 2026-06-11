@@ -31,6 +31,7 @@ typedef struct MemorySnapshot {
 
 extern int  analyzer_max_context_level;
 extern bool analyzer_merge_contexts;
+extern bool analyzer_show_positive_deltas;
 
 /* Forward declarations */
 extern void traverse_memory_contexts(MemoryContext context, 

@@ -8,6 +8,7 @@
 
 /* Execute profiled query inside rollbackable subtransaction */
 extern bool analyzer_rollback_mode; 
+extern bool analyzer_enable_warmup;
 
 /* Saved hook values in case of unload */
 extern ExecutorStart_hook_type prev_ExecutorStart;

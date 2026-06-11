@@ -2,6 +2,7 @@
 
 int analyzer_max_context_level = -1;
 bool analyzer_merge_contexts = false;
+bool analyzer_show_positive_deltas = false;
 
 static inline void init_context_node(ContextNode *node, 
                                      const char *name, const char *parent_name, 
@@ -171,21 +172,21 @@ compute_contexts_diff(ReturnSetInfo *rsinfo,
         /* Calculate memory growth for the context */
         delta_bytes = (int64)node_after->used_bytes - (int64)used_before;
 
-        if (true)
-        {
-            Datum values[6];
-            bool nulls[6] = { false };
+        if (analyzer_show_positive_deltas && delta_bytes == 0)
+            continue;
+        
+        Datum values[6];
+        bool nulls[6] = { false };
 
-            values[0] = CStringGetTextDatum(node_after->name);        /* context_name */
-            values[1] = CStringGetTextDatum(node_after->parent_name); /* parent_name */
-            values[2] = Int32GetDatum(node_after->level);             /* level */
-            values[3] = UInt64GetDatum(used_before);                  /* allocated_before */
-            values[4] = UInt64GetDatum(node_after->used_bytes);       /* allocated_after */
-            values[5] = Int64GetDatum(delta_bytes);                   /* delta_bytes */
+        values[0] = CStringGetTextDatum(node_after->name);        /* context_name */
+        values[1] = CStringGetTextDatum(node_after->parent_name); /* parent_name */
+        values[2] = Int32GetDatum(node_after->level);             /* level */
+        values[3] = UInt64GetDatum(used_before);                  /* allocated_before */
+        values[4] = UInt64GetDatum(node_after->used_bytes);       /* allocated_after */
+        values[5] = Int64GetDatum(delta_bytes);                   /* delta_bytes */
 
-            /* Append result row to an output */
-            tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
-        }
+        /* Append result row to an output */
+        tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
     }
 }
 

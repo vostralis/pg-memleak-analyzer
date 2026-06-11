@@ -73,6 +73,28 @@ _PG_init(void)
         NULL, NULL, NULL
     );
 
+    DefineCustomBoolVariable(
+        "memleak_analyzer.show_positive_deltas_only",
+        "Show only contexts with positive delta",
+        NULL,
+        &analyzer_show_positive_deltas,
+        false,
+        PGC_USERSET,
+        0,
+        NULL, NULL, NULL
+    );
+
+    DefineCustomBoolVariable(
+        "memleak_analyzer.enable_warmup",
+        "Enable or disable the warmup phase before profiling",
+        NULL,
+        &analyzer_enable_warmup,
+        true,
+        PGC_USERSET,
+        0,
+        NULL, NULL, NULL
+    );
+
     bgw_snapshot_signal_reason = RegisterCustomProcSignalHandler(bgw_snapshot_signal_handler);
 }
 

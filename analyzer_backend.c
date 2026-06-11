@@ -6,6 +6,7 @@ static MemorySnapshot backend_snapshot_before = { .node_count = 0 };
 static MemorySnapshot backend_snapshot_after = { .node_count = 0 };
 
 bool analyzer_rollback_mode = true;
+bool analyzer_enable_warmup = true;
 
 ExecutorStart_hook_type prev_ExecutorStart = NULL;
 ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
@@ -46,7 +47,8 @@ analyze_query(PG_FUNCTION_ARGS)
         SPI_connect();
         
         /* Run target query WARMUP_RUNS times to populate internal caches */
-        execute_query_times(query, WARMUP_RUNS);
+        if (analyzer_enable_warmup)
+            execute_query_times(query, WARMUP_RUNS);
 
         /* Enable profiling flag */
         backend_profiling_active = true;
