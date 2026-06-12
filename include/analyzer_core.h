@@ -10,6 +10,7 @@
 #include "utils/tuplestore.h"
 
 #define CONTEXT_NAME_MAX_LEN     64
+#define CONTEXT_PATH_MAX_LEN     512
 #define SNAPSHOT_MAX_NODES       512
 #define TOP_CONTEXT_PARENT_LABEL "-"
 #define TOP_CONTEXT_LEVEL        0
@@ -19,6 +20,7 @@ typedef struct ContextNode
 {
     char      name[CONTEXT_NAME_MAX_LEN];        /* Memory context name */
     char      parent_name[CONTEXT_NAME_MAX_LEN]; /* Parent context name */
+    char      path[CONTEXT_PATH_MAX_LEN];        /* Accumulated path of parent nodes */
     int       level;                             /* Context depth in the tree */
     uint64    used_bytes;                        /* Memory currently used */
     uintptr_t address;                           /* Memory context address used for identity tracking */
@@ -40,8 +42,8 @@ extern bool analyzer_merge_contexts;
 extern bool analyzer_show_positive_deltas;
 
 extern void traverse_memory_contexts(MemoryContext context, 
-                                     const char *parent_name, int level, 
-                                     int max_level, bool merge_contexts,
+                                     const char *parent_name, const char *parent_path, 
+                                     int level, int max_level, bool merge_contexts,
                                      MemorySnapshot* snapshot);
 extern void reset_snapshot(MemorySnapshot *snapshot);
 extern void compute_contexts_diff(ReturnSetInfo *rsinfo, 

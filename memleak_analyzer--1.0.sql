@@ -8,6 +8,7 @@ CREATE OR REPLACE FUNCTION memleak_analyzer.analyze_query(query text)
 RETURNS TABLE (
     context_name     TEXT,
     parent_name      TEXT,
+    context_path     TEXT,
     level            INT,
     allocated_before BIGINT,
     allocated_after  BIGINT,
@@ -16,14 +17,15 @@ RETURNS TABLE (
 AS 'MODULE_PATHNAME', 'analyze_query'
 LANGUAGE C STRICT VOLATILE;
 
-CREATE OR REPLACE FUNCTION memleak_analyzer.get_bgw_memory_snapshot(target_pid INTEGER)
+CREATE OR REPLACE FUNCTION memleak_analyzer.get_bgw_snapshot(target_pid INTEGER)
 RETURNS TABLE (
     context_name TEXT,
     parent_name  TEXT,
+    context_path TEXT,
     level        INT,
     allocated    BIGINT
 )
-AS 'MODULE_PATHNAME', 'get_bgw_memory_snapshot'
+AS 'MODULE_PATHNAME', 'get_bgw_snapshot'
 LANGUAGE C STRICT VOLATILE;
 
 CREATE OR REPLACE FUNCTION memleak_analyzer.analyze_bgw(
@@ -33,6 +35,7 @@ CREATE OR REPLACE FUNCTION memleak_analyzer.analyze_bgw(
 RETURNS TABLE (
     context_name     TEXT,
     parent_name      TEXT,
+    context_path     TEXT,
     level            INT,
     allocated_before BIGINT,
     allocated_after  BIGINT,

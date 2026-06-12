@@ -38,7 +38,7 @@ extern void analyzer_shmem_startup(void);
 extern void analyzer_shmem_request(void);
 extern void bgw_snapshot_signal_handler(void);
 
-Datum get_bgw_memory_snapshot(PG_FUNCTION_ARGS);
+Datum get_bgw_snapshot(PG_FUNCTION_ARGS);
 Datum analyze_bgw(PG_FUNCTION_ARGS);
 
 #endif // ANALYZER_BGW_H

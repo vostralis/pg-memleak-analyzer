@@ -5,7 +5,7 @@ bool analyzer_merge_contexts = false;
 bool analyzer_show_positive_deltas = false;
 
 static inline void init_context_node(ContextNode *node, 
-                                     const char *name, const char *parent_name, 
+                                     const char *name, const char *parent_name, const char *parent_path,
                                      int level, uint64 used_bytes, uintptr_t address);
 
 /*
@@ -21,6 +21,7 @@ static inline void init_context_node(ContextNode *node,
  * Parameters:
  * context        - current MemoryContext being traversed.
  * parent_name    - name of the parent context.
+ * parent_path    - absolute path to the parent context.
  * level          - current tree depth level.
  * max_level      - maximum traversal depth limit.
  * merge_contexts - whether matching contexts should be merged.
@@ -29,6 +30,7 @@ static inline void init_context_node(ContextNode *node,
 extern void
 traverse_memory_contexts(MemoryContext context,
                          const char *parent_name,
+                         const char *parent_path,
                          int level,
                          int max_level,
                          bool merge_contexts,
@@ -37,6 +39,7 @@ traverse_memory_contexts(MemoryContext context,
     MemoryContext         child;
     MemoryContextCounters stats;
     uint64                used_bytes;
+    char                  current_path[CONTEXT_PATH_MAX_LEN];
 
     bool context_limit_reached = (snapshot->node_count >= SNAPSHOT_MAX_NODES);
     
@@ -74,6 +77,12 @@ traverse_memory_contexts(MemoryContext context,
     context->methods->stats(context, NULL, NULL, &stats, false);
     used_bytes = (uint64)(stats.totalspace - stats.freespace);
 
+    /* Concatenate parent path with context's name */
+    if (level == TOP_CONTEXT_LEVEL)
+        strlcpy(current_path, context->name, CONTEXT_PATH_MAX_LEN);
+    else
+        snprintf(current_path, CONTEXT_PATH_MAX_LEN, "%s;%s", parent_path, context->name);
+
     if (merge_contexts)
     {
         bool is_merged = false;
@@ -84,9 +93,7 @@ traverse_memory_contexts(MemoryContext context,
             ContextNode *existing_node = &snapshot->nodes[i];
 
             /* If such context exists, merge it */
-            if (existing_node->level == level &&
-                strncmp(existing_node->name, context->name, CONTEXT_NAME_MAX_LEN) == 0 &&
-                strncmp(existing_node->parent_name, parent_name, CONTEXT_NAME_MAX_LEN) == 0)
+            if (strncmp(existing_node->path, current_path, CONTEXT_PATH_MAX_LEN) == 0)
             {
                 existing_node->used_bytes += used_bytes;
                 is_merged = true;
@@ -99,7 +106,8 @@ traverse_memory_contexts(MemoryContext context,
         {
             init_context_node(
                 &snapshot->nodes[snapshot->node_count++], 
-                context->name, parent_name, level, used_bytes, (uintptr_t)NULL /* Address is irrelevant */
+                context->name, parent_name, current_path, 
+                level, used_bytes, (uintptr_t)NULL /* Address is irrelevant */
             );
         }
     }
@@ -108,14 +116,15 @@ traverse_memory_contexts(MemoryContext context,
         /* Otherwise just push back a new one */
         init_context_node(
             &snapshot->nodes[snapshot->node_count++], 
-            context->name, parent_name, level, used_bytes, (uintptr_t)context
+            context->name, parent_name, current_path,
+            level, used_bytes, (uintptr_t)context
         );
     }
 
     /* Recursively traverse through all the current context's childs */
     for (child = context->firstchild; child != NULL; child = child->nextchild)
     {
-        traverse_memory_contexts(child, context->name, level + 1, max_level, merge_contexts, snapshot);
+        traverse_memory_contexts(child, context->name, current_path, level + 1, max_level, merge_contexts, snapshot);
     }
 }
 
@@ -137,6 +146,7 @@ reset_snapshot(MemorySnapshot *snapshot)
 
         memset(node->name, 0, CONTEXT_NAME_MAX_LEN);
         memset(node->parent_name, 0, CONTEXT_NAME_MAX_LEN);
+        memset(node->path, 0, CONTEXT_PATH_MAX_LEN);
         node->level = 0;
         node->used_bytes = 0;
         node->address = (uintptr_t)NULL;
@@ -189,15 +199,16 @@ compute_contexts_diff(ReturnSetInfo *rsinfo,
         if (analyzer_show_positive_deltas && delta_bytes == 0)
             continue;
         
-        Datum values[6];
-        bool nulls[6] = { false };
+        Datum values[7];
+        bool nulls[7] = { false };
 
         values[0] = CStringGetTextDatum(node_after->name);        /* context_name */
         values[1] = CStringGetTextDatum(node_after->parent_name); /* parent_name */
-        values[2] = Int32GetDatum(node_after->level);             /* level */
-        values[3] = UInt64GetDatum(used_before);                  /* allocated_before */
-        values[4] = UInt64GetDatum(node_after->used_bytes);       /* allocated_after */
-        values[5] = Int64GetDatum(delta_bytes);                   /* delta_bytes */
+        values[2] = CStringGetTextDatum(node_after->path);        /* context_path */
+        values[3] = Int32GetDatum(node_after->level);             /* level */
+        values[4] = UInt64GetDatum(used_before);                  /* allocated_before */
+        values[5] = UInt64GetDatum(node_after->used_bytes);       /* allocated_after */
+        values[6] = Int64GetDatum(delta_bytes);                   /* delta_bytes */
 
         /* Append result row to an output */
         tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
@@ -221,13 +232,15 @@ compute_contexts_diff(ReturnSetInfo *rsinfo,
 static inline void
 init_context_node(ContextNode *node, 
                   const char *name,
-                  const char *parent_name, 
+                  const char *parent_name,
+                  const char *parent_path,
                   int level,
                   uint64 used_bytes,
                   uintptr_t address)
 {
     strlcpy(node->name, name, CONTEXT_NAME_MAX_LEN);
     strlcpy(node->parent_name, parent_name, CONTEXT_NAME_MAX_LEN);
+    strlcpy(node->path, parent_path, CONTEXT_PATH_MAX_LEN);
     node->level = level;
     node->used_bytes = used_bytes;
     node->address = address;

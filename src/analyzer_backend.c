@@ -109,7 +109,7 @@ analyzer_ExecutorStart(QueryDesc *queryDesc, int eflags)
     {
         /* Capture a snapshot before the query execution */
         traverse_memory_contexts(
-            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, TOP_CONTEXT_LEVEL,
+            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, "", TOP_CONTEXT_LEVEL,
             analyzer_max_context_level, analyzer_merge_contexts, &backend_snapshot_before
         );
     }
@@ -136,7 +136,7 @@ analyzer_ExecutorEnd(QueryDesc *queryDesc)
     {
         /* Capture a snapshot after the query execution */
         traverse_memory_contexts(
-            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, TOP_CONTEXT_LEVEL, 
+            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, "", TOP_CONTEXT_LEVEL, 
             analyzer_max_context_level, analyzer_merge_contexts, &backend_snapshot_after
         );
     }

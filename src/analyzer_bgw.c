@@ -82,7 +82,7 @@ bgw_snapshot_signal_handler(void)
         reset_snapshot(local_snapshot);
 
         traverse_memory_contexts(
-            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, TOP_CONTEXT_LEVEL, 
+            TopMemoryContext, TOP_CONTEXT_PARENT_LABEL, "", TOP_CONTEXT_LEVEL, 
             local_max_context_level, local_merge_contexts, local_snapshot
         );
         
@@ -96,15 +96,15 @@ bgw_snapshot_signal_handler(void)
     pfree(local_snapshot);
 }
 
-PG_FUNCTION_INFO_V1(get_bgw_memory_snapshot);
+PG_FUNCTION_INFO_V1(get_bgw_snapshot);
 
 /*
- * get_bgw_memory_snapshot
+ * get_bgw_snapshot
  *
  * SRF function that retrieves a single snapshot of a background worker memory context tree
  * that is obtained via request to the target process.
  */
-Datum get_bgw_memory_snapshot(PG_FUNCTION_ARGS)
+Datum get_bgw_snapshot(PG_FUNCTION_ARGS)
 {
     pid_t target_pid =  PG_GETARG_INT32(0);
 
@@ -120,13 +120,14 @@ Datum get_bgw_memory_snapshot(PG_FUNCTION_ARGS)
     {
         ContextNode *node = &snapshot->nodes[i];
 
-        Datum values[4];
-        bool nulls[4] = { false };
+        Datum values[5];
+        bool nulls[5] = { false };
 
         values[0] = CStringGetTextDatum(node->name);        /* context_name */
         values[1] = CStringGetTextDatum(node->parent_name); /* parent_name */
-        values[2] = Int32GetDatum(node->level);             /* level */
-        values[3] = UInt64GetDatum(node->used_bytes);       /* allocated */
+        values[2] = CStringGetTextDatum(node->path);        /* context_path */
+        values[3] = Int32GetDatum(node->level);             /* level */
+        values[4] = UInt64GetDatum(node->used_bytes);       /* allocated */
 
         /* Append result row to an output */
         tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
