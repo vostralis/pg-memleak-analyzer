@@ -11,7 +11,7 @@ OBJS	   = src/analyzer_main.o \
 
 PG_CPPFLAGS = -Iinclude
 
-REGRESS	     = client_leak
+REGRESS	     = test_suite
 REGRESS_OPTS = --load-extension=memleak_analyzer
 
 PG_CONFIG = pg_config
