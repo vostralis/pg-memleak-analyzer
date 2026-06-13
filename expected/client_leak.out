@@ -1,0 +1,161 @@
+-- Function registration
+CREATE OR REPLACE FUNCTION memleak_analyzer.trigger_context_leak() 
+RETURNS VOID 
+AS '$libdir/memleak_analyzer', 'trigger_context_leak'
+LANGUAGE C STRICT;
+CREATE OR REPLACE FUNCTION memleak_analyzer.trigger_multiple_contexts_leak() 
+RETURNS VOID 
+AS '$libdir/memleak_analyzer', 'trigger_multiple_contexts_leak'
+LANGUAGE C STRICT;
+CREATE OR REPLACE FUNCTION memleak_analyzer.trigger_nested_contexts_leak() 
+RETURNS VOID 
+AS '$libdir/memleak_analyzer', 'trigger_nested_contexts_leak'
+LANGUAGE C STRICT;
+-- Test table
+CREATE TABLE test_table (id int);
+-- Setup GUC parameters
+SET memleak_analyzer.show_positive_deltas_only = off;
+SET memleak_analyzer.rollback_mode = on;
+SET memleak_analyzer.merge_contexts = off;
+SET memleak_analyzer.max_context_level_displayed = -1;
+SET memleak_analyzer.enable_warmup = on;
+-- 1. 
+-- 1.1. Simple select
+SELECT count(*) FROM memleak_analyzer.analyze_query('SELECT 1')
+WHERE delta_bytes > 0; -- expected 0
+ count 
+-------
+     3
+(1 row)
+
+-- 1.2. DML operation
+SELECT count(*) > 0 FROM memleak_analyzer.analyze_query('INSERT INTO test_table VALUES (69)')
+WHERE delta_bytes > 0; -- expected 1
+ ?column? 
+----------
+ t
+(1 row)
+
+-- 2. Rollback mode
+-- 2.1. With 'rollback_mode = on' new row should NOT appear in test_table
+SELECT count(*) FROM memleak_analyzer.analyze_query('INSERT INTO test_table VALUES (42)')
+WHERE context_name = 'TopMemoryContext'; -- just to trigger insertion attempt
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM test_table WHERE id = 42; -- expected 0
+ count 
+-------
+     0
+(1 row)
+
+SET memleak_analyzer.rollback_mode = off;
+-- 2.2. With 'rollback_mode = off' new row should appear in test_table
+SELECT count(*) FROM memleak_analyzer.analyze_query('INSERT INTO test_table VALUES (42)')
+WHERE context_name = 'TopMemoryContext'; -- just to trigger insertion attempt;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM test_table WHERE id = 42; -- expected 1
+ count 
+-------
+     1
+(1 row)
+
+SET memleak_analyzer.rollback_mode = on;
+-- 3. The presence of a leak in the top context
+SELECT context_name, (delta_bytes >= 1000) AS leak_detected
+FROM memleak_analyzer.analyze_query('SELECT memleak_analyzer.trigger_context_leak()')
+WHERE context_name = 'TopMemoryContext'; -- expected t
+   context_name   | leak_detected 
+------------------+---------------
+ TopMemoryContext | t
+(1 row)
+
+SET memleak_analyzer.enable_warmup = off;
+-- 4. Merge contexts mode
+-- 4.1. With 'merge_contexts = off' we expect to see 3 separate entries for the ‘MyTestContext’ context (warmups are off)
+SELECT count(*) FROM memleak_analyzer.analyze_query('SELECT memleak_analyzer.trigger_multiple_contexts_leak()')
+WHERE context_name = 'TestContext'; -- expected 3
+ count 
+-------
+     3
+(1 row)
+
+SET memleak_analyzer.merge_contexts = on;
+-- 4.2. With 'merge_contexts = on' we expect to see exactly one entry containing the sum of the bytes
+SELECT count(*) FROM memleak_analyzer.analyze_query('SELECT memleak_analyzer.trigger_multiple_contexts_leak()') 
+WHERE context_name = 'TestContext'; -- expected 1
+ count 
+-------
+     1
+(1 row)
+
+SET memleak_analyzer.merge_contexts = off;
+-- 5. Context level limitation mode
+-- 5.1. With 'max_context_level_displayed = -1' (no limit) the context must be included in the output
+SELECT count(*) FROM memleak_analyzer.analyze_query('SELECT memleak_analyzer.trigger_nested_contexts_leak()')
+WHERE context_name = 'Level3Context'; -- expected 1
+ count 
+-------
+     1
+(1 row)
+
+SET memleak_analyzer.max_context_level_displayed = 2;
+-- 5.2. With 'max_context_level_displayed = 2' the Level3Context node (level 3) must be discarded by the filter
+SELECT count(*) FROM memleak_analyzer.analyze_query('SELECT memleak_analyzer.trigger_nested_contexts_leak()')
+WHERE context_name = 'Level3Context'; -- expected 0
+ count 
+-------
+     0
+(1 row)
+
+SET memleak_analyzer.max_context_level_displayed = 3;
+-- 5.3. With 'max_context_level_displayed = 3' all 3 created contexts must be included in the output 
+SELECT count(*) FROM memleak_analyzer.analyze_query('SELECT memleak_analyzer.trigger_nested_contexts_leak()')
+WHERE context_name = 'Level3Context'; -- expected 3
+ count 
+-------
+     3
+(1 row)
+
+-- 6. Positive deltas mode
+SET memleak_analyzer.show_positive_deltas_only = on;
+-- 6.1. With 'show_positive_deltas_only = on' we expect to see 0 entries
+SELECT count(*) FROM memleak_analyzer.analyze_query('SELECT 1')
+WHERE delta_bytes = 0; -- expected 0
+ count 
+-------
+     0
+(1 row)
+
+SET memleak_analyzer.show_positive_deltas_only = off;
+-- 7. IPC (on our own pid)
+-- 7.1. Check retrieval of a single snapshot
+SELECT count(*) > 0 AS snapshot_captured
+FROM memleak_analyzer.get_bgw_snapshot(pg_backend_pid()); -- expected t
+ snapshot_captured 
+-------------------
+ t
+(1 row)
+
+-- 7.2. Check calculation with time difference
+SELECT count(*) > 0 AS diff_captured
+FROM memleak_analyzer.analyze_bgw(pg_backend_pid(), 1); -- expected t
+ diff_captured 
+---------------
+ t
+(1 row)
+
+-- 8. Error handling
+-- 8.1. Negative interval
+SELECT memleak_analyzer.analyze_bgw(pg_backend_pid(), -5); -- expected ERROR
+ERROR:  Observation interval must be greater than zero
+-- 8.2. Incorrect PID
+SELECT memleak_analyzer.get_bgw_snapshot(-1); -- expected ERROR
+ERROR:  Failed to route signal to PID -1
+DROP TABLE test_table;
